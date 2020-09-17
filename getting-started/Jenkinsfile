@@ -1,22 +1,121 @@
 pipeline {
-    options {
-        timeout(time: 1, unit: 'HOURS')
+  agent {
+    docker {
+        image 'tomcat:8'
     }
-    agent {
-        label 'ubuntu-1804 && amd64 && docker'
+  }
+  environment {
+    DOCKER_HOME = "${tool 'Docker'}"
+    MAVEN_HOME = "${tool 'Maven'}"
+    MSA_NAME = "jenkins-test"
+    IMAGE_NAME = "jenkins"
+    DOCKER_FILE_DIR = "docker"
+    APPLICATION_NAME = "jenkins-test"
+    DEPLOYMENT_GROUP_NAME = "jenkins-test"
+  }
+  stages {
+    stage('Prepare') {
+      steps {
+        echo "${env.BUILD_NUMBER}"
+        sh 'ln -s $DOCKER_HOME/bin/docker /usr/bin/docker'
+        sh 'ln -s $MAVEN_HOME/bin/mvn /usr/bin/mvn'
+      
+        echo 'Prepare finished.'
+      }
     }
-    stages {
-        stage('build and push') {
-            when {
-                branch 'master'
-            }
-            sh "docker build -t docker/getting-started ."
-
-            steps {
-                withDockerRegistry([url: "", credentialsId: "dockerbuildbot-index.docker.io"]) {
-                    sh("docker push docker/getting-started")
-                }
-            }
+    stage('Build') {
+      steps {
+        echo 'Maven Building..'
+        sh 'mvn clean install -U package -P dev'
+      }
+    }
+    stage('Build Image') {
+      environment {
+        DOCKER_FILE = "Dockerfile"
+      }
+      steps {
+        echo 'Build started on `date`'
+        echo 'Building the Container image...'
+        sh 'docker build  -f ${DOCKER_FILE_DIR}/${DOCKER_FILE} -t ${IMAGE_NAME} .'
+        sh 'docker tag ${IMAGE_NAME}:latest test/${IMAGE_NAME}:latest'
+      }
+    }
+    stage('Image Scan') {
+      steps {
+        echo 'Image scan'
+        aquaMicroscanner imageName: "test/${IMAGE_NAME}:latest", notCompliesCmd: '', onDisallowed: 'ignore', outputFormat: 'html'
+      }
+    }
+  /*  stage('Upload Image') {
+       steps {
+        echo 'Container Image upload'
+        script {
+          docker.withRegistry('https://223139141744.dkr.ecr.ap-northeast-2.amazonaws.com', 'ecr:ap-northeast-2:ECOM-DEV-JENKINS') {
+            docker.image('${IMAGE_NAME}').push()
+          }
         }
+        echo 'Container image pushing Finished'
+      } 
     }
+    stage('Appspec Upload'){
+      steps {
+        echo 'appspec.yaml upload'
+        script{
+          withAWS(credentials:'ECOM-DEV-JENKINS', region:'ap-northeast-2') {
+            s3Upload(path:"jenkins/${MSA_NAME}/${env.BUILD_NUMBER}/", file:"conf/dev.appspec.yaml", bucket:'awsdc-s3-pss-dev-cicd')
+          }
+        }
+        echo 'appspec.yaml upload finished'
+      }
+    }
+    stage('Deploy') {
+      environment {
+        DEPLOYMENT_CONFIG_NAME = 'CodeDeployDefault.ECSAllAtOnce'
+      }
+      steps {
+        echo 'CodeDeploy Start'
+        script {
+          withAWS(credentials:'ECOM-DEV-JENKINS', region:'ap-northeast-2') {
+            sh """
+              aws deploy create-deployment \
+              --application-name ${APPLICATION_NAME} \
+              --deployment-config-name ${DEPLOYMENT_CONFIG_NAME} \
+              --deployment-group-name ${DEPLOYMENT_GROUP_NAME} \
+              --region ap-northeast-2 \
+              --s3-location bucket=awsdc-s3-pss-dev-cicd,bundleType=YAML,key=jenkins/${MSA_NAME}/${env.BUILD_NUMBER}/dev.appspec.yaml \
+              --description "deployment" \
+              --output json > DEPLOYMENT_ID.json
+            """
+
+            def DEPLOYMENT_ID = readJSON file: './DEPLOYMENT_ID.json'
+            echo "${DEPLOYMENT_ID.deploymentId}"
+            sh "rm -rf ./DEPLOYMENT_ID.json"
+            def DEPLOYMENT_RESULT = ""
+            while("$DEPLOYMENT_RESULT" != "\"Succeeded\"") {
+              DEPLOYMENT_RESULT = sh(
+                script:"aws deploy get-deployment \
+                --query \"deploymentInfo.status\" \
+                --region ap-northeast-2 \
+                --deployment-id ${DEPLOYMENT_ID.deploymentId}",
+                returnStdout: true
+              ).trim()
+              echo "$DEPLOYMENT_RESULT"
+              if ("$DEPLOYMENT_RESULT" == "\"Failed\"") {
+                throw new Exception("CodeDeploy Failed")
+                break
+              }
+              if ("$DEPLOYMENT_RESULT" == "\"Stopped\"") {
+                throw new Exception("CodeDeploy Stopped")
+                break
+              }
+              sleep(30)
+            }
+
+          }
+        }
+
+      }
+    } */
+  }
 }
+
