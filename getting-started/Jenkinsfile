@@ -1,51 +1,21 @@
 pipeline {
-  agent {
-    docker {
-        image 'tomcat:8'
-    }
-  }
-  environment {
-    DOCKER_HOME = "${tool 'Docker'}"
-    MAVEN_HOME = "${tool 'Maven'}"
-    MSA_NAME = "jenkins-test"
-    IMAGE_NAME = "jenkins"
-    DOCKER_FILE_DIR = "docker"
-    APPLICATION_NAME = "jenkins-test"
-    DEPLOYMENT_GROUP_NAME = "jenkins-test"
-  }
-  stages {
-    stage('Prepare') {
-      steps {
-        echo "${env.BUILD_NUMBER}"
-        sh 'ln -s $DOCKER_HOME/bin/docker /usr/bin/docker'
-        sh 'ln -s $MAVEN_HOME/bin/mvn /usr/bin/mvn'
-      
-        echo 'Prepare finished.'
-      }
-    }
-    stage('Build') {
-      steps {
-        echo 'Maven Building..'
-        sh 'mvn clean install -U package -P dev'
-      }
-    }
-    stage('Build Image') {
-      environment {
-        DOCKER_FILE = "Dockerfile"
-      }
-      steps {
-        echo 'Build started on `date`'
-        echo 'Building the Container image...'
-        sh 'docker build  -f ${DOCKER_FILE_DIR}/${DOCKER_FILE} -t ${IMAGE_NAME} .'
-        sh 'docker tag ${IMAGE_NAME}:latest test/${IMAGE_NAME}:latest'
-      }
-    }
-    stage('Image Scan') {
-      steps {
-        echo 'Image scan'
-        aquaMicroscanner imageName: "test/${IMAGE_NAME}:latest", notCompliesCmd: '', onDisallowed: 'ignore', outputFormat: 'html'
-      }
-    }
-  }
-}
+    agent any
 
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Building..'
+            }
+        }
+        stage('Test') {
+            steps {
+                echo 'Testing..'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                echo 'Deploying....'
+            }
+        }
+    }
+}
