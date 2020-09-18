@@ -1,55 +1,10 @@
+Jenkinsfile (Declarative Pipeline)
 pipeline {
-    agent {
-	    docker {
-	        image 'tomcat:8'
-	    }
-	}
-	environment {
-	    DOCKER_HOME = "${tool 'Docker'}"
-	    MAVEN_HOME = "${tool 'Maven'}"
-	    MSA_NAME = "ynshin"
-	    IMAGE_NAME = "jenkins-result"
-	    DOCKER_FILE_DIR = "docker"
-	    APPLICATION_NAME = "jenkins-test"
-	    DEPLOYMENT_GROUP_NAME = "jenkins-test"
-	}
+    agent { docker { image 'maven:3.3.3' } }
     stages {
-    	 stage('Prepare') {
-		     steps {
-		        echo "${env.BUILD_NUMBER}"
-		        sh 'ln -s $DOCKER_HOME/bin/docker /usr/bin/docker'
-		        sh 'ln -s $MAVEN_HOME/bin/mvn /usr/bin/mvn'
-		        echo 'install aws cli v2'
-		        
-		    }
-	    }
-        stage('Build') {
+        stage('build') {
             steps {
-                echo 'Maven Building..'
-        		sh 'mvn clean install -U package -P dev'
-            }
-        }
-        stage('Build Image') {
-        	environment {
-		        ECS_SSH_KEY = credentials('ECS_SSH_KEY')
-		        DOCKER_FILE = "Dockerfile"
-		        XMS = "-Xms512M"
-		        XMX = "-Xmx1792M"
-			}
-			steps {
-                echo 'Build started on `date`'
-                sh 'docker build --build-arg XMS="${XMS}" --build-arg XMX="${XMX}" --build -f ${DOCKER_FILE_DIR}/${DOCKER_FILE} -t ${IMAGE_NAME} .'
-        		sh 'docker tag ${IMAGE_NAME}:latest'
-            }
-        }
-        stage('Test') {
-            steps {
-                echo 'Testing..'
-            }
-        }
-        stage('Deploy') {
-            steps {
-                echo 'Deploying....'
+                sh 'mvn --version'
             }
         }
     }
